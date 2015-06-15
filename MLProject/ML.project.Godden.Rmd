@@ -1,0 +1,135 @@
+---
+title: "Classification Model to Predict Exercise Quality"
+author: "Kurt Godden"
+date: "June 14, 2015"
+output: html_document
+---
+### Executive Summary  
+The caret package was used to create a classifier to predict which of 5 modes of performing a Unilateral Dumbbell Biceps Curl was done by a test subject.  Predictor data was obtained by outfitting test subjects with four sensors taking accelerometer, gyroscope and magnetometer readings. I built 8 random forest models with a variety of parameter settings and with various combinations of features. The choices and results are described.   
+
+### Summary of Approach   
+The source data is described in a research paper at <http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf>. This paper describes 96 derived variables that are included in the source dataset.  These 96 came from: 8 derived features (mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness) \* 3 Euler angles (roll, pitch, yaw) \* 4 sensors (belt, glove, armband and dumbbell). However, I discovered during my first analysis that there are also 4 additional derived variables not described in their paper: *var_total_accel_belt*, *var_accel_arm*, *var_accel_dumbbell*, and *var_accel_forearm*.  Since I wished to use only the sensor data and not derived variable data, I deleted all 100 of these variables after downloading the raw training data.  In addition, I also deleted the four variables: *X* (integers used as row names) and factors *user_name*, *cvtd_timestamp*, *new_window* 
+because I wanted to use principal component analysis, and that only works with numeric data.  Thus, I removed a total of 104 variables from the training data, resulting in 56 remaining variables.  My first few models were built using 55 of those as the predictors with *classe* as the outcome.  Later models were built using even fewer variables, as described below.   
+
+During my exploratory analysis I ran a correlation matrix and noticed that several variables were highly correlated. I intended therefore that my final model would use principal component analysis (PCA) to address these correlations and also reduce the size of the data vectors used to build the model. This, however, turned out to be an incorrect decision, as will be explained below.   
+
+Since our task was to classify test cases into one of 5 categories, I decided to employ a random forest model, which is known to be a high-performing classification prediction tool.  In order to speed up processing, I enabled parallel processing to take advantage of the 8 cores in my computer's Intel Core i7 processor.
+
+Finally, I initially ran models using bootstrapping, since that is the default resampling for caret's 
+*train* function and it runs faster than cross validation.  However, I switched to cross validation (a project requirement) for three of the last models, including my final model.   
+
+### Model Descriptions 
+As noted above, I created 8 different random forest models in order to explore different parameter settings and data
+partitions, before deciding on a final model to create.  These are briefly explained in the following list, headed by my 
+name for each model:   
+
+1. fitTest: random forest on all training data, 56 variables, PCA, bootstrapping.  
+    + Accuracy: 0.9779348  
+    + Kappa:    0.9720899
+2. rfFit: random forest on 95% of training data, 56 variables, PCA, bootstrapping, with 5% of training data used for out of sample error analysis.  
+    + Accuracy: 0.9761136  
+    + Kappa:    0.9697835
+3. rfFit.NoPCA: random forest on 95% training data, 56 variables, no PCA, bootstrapping, with 5% training data for out of sample error analysis.  
+    + Accuracy:  0.9962537  
+    + Kappa:     0.9952580  
+4. rfFitParallel: same as model 2, but using parallel processing, which sped up processing by about 50%.
+    + Accuracy: 0.9760230  
+    + Kappa:   0.9696875
+5. xvFit: same as model 4, again using PCA, but now using *cross validation* instead of bootstrapping as the resampling method.  
+    + Accuracy: 0.9839563  
+    + Kappa:    0.9797046
+6. rfFit.NoPCA.revised: same as model 3 with bootstrapping, but now using 53 variables and parallel processing. 
+    + Accuracy: 0.9924043  
+    + Kappa:    0.9903911 
+7. xvFit.fullyReduced: random forest with parallel processing on 95% training data, 53 variables, PCA , 10-fold cross validation, with 5% training data for out of sample error analysis. 
+    + Accuracy: 0.9811458  
+    + Kappa:    0.9761478  
+8. **xvFitFinal (FINAL MODEL)**: random forest using **10-fold cross validation with 10 repetitions** and parallel processing on 70% of the training data, 53 variables with *no PCA*, and 30% of the training data held out for out of sample error analysis.
+    + Accuracy: 0.9933730  
+    + Kappa:    0.9916163
+    + Accuracy and Kappa are the results from the 30% holdback data used to estimate out of sample errors after training.
+    
+### Discussion and Results
+
+Notice that models 3 and 6 with no preprocessing (i.e. no PCA analysis) both had very high accuracy and Kappa statistics.  For example, at first glance Model 3 was almost perfect, and in fact the confusion matrix on the 5% holdback data showed no errors whatsoever, and that model indicated perfect sensitivity and specificity for all 5 prediction classes.  However, neither model was created with cross-validation, so they could not be used as my final model since cross-validation was a requirement.
+
+Because I was using no PCA for model 3, I was able to use varImp and discovered that *raw_timestamp_part_1* and *num_window* were two of
+the most important variables, which led me to discover somewhat later that I should delete those along with *raw_timestamp_part_2*. The reason for this is because those 3 variables are not sensor data, and one of the course Community TA's indicated that they would actually result in useless information for accurate predictions on unseen data.  Hence, models 6, 7 and 8 were run on the fully reduced set of 53 variables, including the outcome *classe*.  
+
+For the final model, the confusion matrix produced on the 30% holdback data used to estimate out of sample errors gives these results. (Note: The numbers in the remainder of this section will be slightly different than what appears in the Appendix below, which were generated from an all-new model built during the knitr rendering of this markdown file.  But they should be close to each other.) 
+
+A: 1673 observations correctly classified as classe A, 1 B observation incorrectly classified as A.   
+
+B: 1128 observations correctly classified as B, with 8 A's and 3 C's incorrectly classified as B.   
+
+C: 1017 observations correctly classified as C, with 7 B's and 2 D's incorrectly classified as C.   
+
+D: 949 observations correctly classified as D, with 15 C's incorrecly classified as D.   
+
+E: 1079 observations correctly classified as E, with 3 D's incorrectly classified as E.   
+
+Therefore, the predicted error rates for out of sample errors are the incorrect classifications for each row, divided by the sum of all classifications for each row.  This gives the following estimated out of sample error rates:  
+
+A: 0.000597 (i.e. 1/1674)  
+
+B: 0.009658  
+
+C: 0.008772  
+
+D: 0.015560  
+
+E: 0.002773  
+
+Further, the accuracy and Kappa of this previously unseen data are very good, at 0.9933730 and 0.9916163, respectively.
+
+With estimated errors this small, we would expect not to find any classification errors on the 20 test cases used for grading. The actual predictions of this model on the 20 test cases used for grading are:   
+
+B A B A A E D B A A B C B A E E A B B B
+
+Those are 100% correct predictions.  So we can see that random forest truly is an excellent classification algorithm, providing extremely good estimates for out of sample errors, and these estimated errors are validated by the perfect predictions of the 20 test samples.  
+
+**Note: There are exactly 1416 words in this RMD file, including this sentence.**
+
+### Appendix: Code for Final Model
+
+```{r warning=FALSE, message=FALSE, eval=TRUE}
+library(caret)
+library(randomForest)
+library(knitr) #to use kable function
+library(doParallel) 
+cl <- makeCluster(detectCores()) # enable multi-core processing
+registerDoParallel(cl)
+```
+```{r warning=FALSE, message=FALSE, eval=TRUE}
+trngData   <- read.csv("pml-training.csv", header=TRUE, nrows=20000)
+colNames   <- names(trngData)
+deleteCols <- grep("avg_|var_|stddev_|kurtosis_|max_|min_|amplitude_|skewness_", colNames)
+trngData   <- trngData[, -deleteCols] #remove all derived variables
+trngData   <- trngData[, -c(1, 2, 3, 4, 5, 6, 7)] #other non-sensor variables
+# All remaining vars are SENSOR NUMERIC VARS except for the independent var 'classe'
+
+inTrain <- createDataPartition(y=trngData$classe, p=0.7, list=FALSE)
+# 30% of training data is held back to evaluate out of sample errors
+trainingSet <- trngData[inTrain,]  # 13737 observations
+testingSet  <- trngData[-inTrain,] # 30% data, 5885 observations
+fitControl  <- trainControl(## 10 fold cross validation with 10 reps
+                            method="repeatedcv",
+                            number=10, repeats=10)
+xvFitFinal <- train(classe ~ ., method="rf", data=trainingSet, 
+                    trControl=fitControl, importance=TRUE)  
+# Now get confusion matrix using the 30% remaining data
+# to estimate expected out of sample errors and other stats
+cm<-confusionMatrix(testingSet$classe, predict(xvFitFinal, testingSet))
+```
+
+
+```{r warning=FALSE, message=FALSE, eval=TRUE}
+kable(cm$table) #Show confusion matrix
+kable(cm$overall[1:2]) #Show Accuracy and Kappa
+kable(cm$byClass[,1:4]) #Other significant stats
+# Now get test data for grading and make predictions, after removing non-sensor vars
+testData  <- read.csv("pml-testing.csv", header=TRUE)
+testData  <- testData[, -deleteCols]
+testData  <- testData[, -c(1, 2, 3, 4, 5, 6, 7)]
+predict(xvFitFinal, testData[, -53]) # all 20 are correct
+```
