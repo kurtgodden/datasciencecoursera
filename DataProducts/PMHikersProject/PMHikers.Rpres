@@ -1,0 +1,54 @@
+Predicting Membership in The PM Hikers
+========================================================
+author: Kurt Godden
+date: `r format(Sys.Date(), format="%B %d, %Y")`
+transition: rotate
+type: section
+
+Objective
+========================================================
+type: section
+- Build model of total membership of 'The PM Hikers'
+based on first 3 years of data.
+- Validate the model with existing data
+- Use model to predict future membership numbers
+- http://www.meetup.com/The-PM-Hikers/
+
+Exploratory Models
+========================================================
+type: section
+80% training data, 20% held back for validation:
+
+1. ```bats(tstrain, num.cores=NULL) #forecast pkg```
+    + Very poor prediction results 
+2. ```train(trainingSplined[, 2] ~ . - 1, method="lm", data=trainingSplined) # linear model using splines with 30 knots```
+    + Could not get predict() to work properly
+3. ```train(Total.Members ~ Order, method="lm", data=training) #caret package```
+    + Extremely good p-values and R^2
+Linear Regression Model
+========================================================
+type: section
+Although model statistics appear good, pattern in residual plot reveals issues with lm():
+```{r, echo=FALSE}
+library(caret)
+library(lubridate)
+
+totalActiveData      <- read.csv("total.active.members.csv")
+totalActiveData$Date <- as.Date(totalActiveData$Date, format="%m/%d/%y")
+totalActiveData$Day  <- 1:nrow(totalActiveData)
+numModelDays         <- nrow(totalActiveData)
+xLabels              <- seq(from       = totalActiveData$Date[1], 
+                            to         = totalActiveData$Date[numModelDays], 
+                            length.out = numModelDays)
+fit                  <- lm(Total.Members ~ Day, data=totalActiveData)
+```
+```{r}
+plot(fit$residuals, col="red")
+```
+Next Steps
+========================================================
+type: section
+
+- Residual plot indicates possible seasonal pattern
+- I will continue to experiment with spline-based model
+- Will also investigate why 'bats' model in forecast package had poor results
